@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/overviewFragment"
+        android:icon="@drawable/ic_map"
+        android:title="Overview" />
+
+    <item
+        android:id="@+id/recordsFragment"
+        android:icon="@drawable/ic_list"
+        android:title="Records" />
+
+    <item
+        android:id="@+id/entryFragment"
+        android:icon="@drawable/ic_add"
+        android:title="New Entry" />
+
+</menu>
