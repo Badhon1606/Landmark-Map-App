@@ -10,7 +10,7 @@ import com.bumptech.glide.Glide
 import com.example.landmark_app.R
 import com.example.landmark_app.model.Landmark
 
-class LandmarkAdapter(private val landmarks: List<Landmark>) :
+class LandmarkAdapter(private val landmarks: MutableList<Landmark>) :
     RecyclerView.Adapter<LandmarkAdapter.LandmarkViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LandmarkViewHolder {
@@ -27,6 +27,17 @@ class LandmarkAdapter(private val landmarks: List<Landmark>) :
 
     override fun getItemCount(): Int = landmarks.size
 
+    fun removeAt(position: Int) {
+        if (position >= 0 && position < landmarks.size) {
+            landmarks.removeAt(position)
+            notifyItemRemoved(position)
+        }
+    }
+
+    fun getLandmarkAt(position: Int): Landmark {
+        return landmarks[position]
+    }
+
     class LandmarkViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
         private val titleTextView: TextView = itemView.findViewById(R.id.titleTextView)
@@ -37,13 +48,10 @@ class LandmarkAdapter(private val landmarks: List<Landmark>) :
             titleTextView.text = landmark.title
             locationTextView.text = "Lat: ${landmark.latitude}, Lon: ${landmark.longitude}"
 
-            val fullUrl =
-                "https://labs.anontech.info/cse489/t3/images/${landmark.imageUrl}"
-
             Glide.with(itemView.context)
-                .load(fullUrl)
+                .load(landmark.fullImageUrl)
                 .placeholder(android.R.drawable.ic_menu_gallery)
-                .error(android.R.drawable.ic_menu_report_image)
+                .error(android.R.drawable.ic_dialog_alert) // Changed from ic_menu_report_image
                 .into(imageView)
         }
     }
