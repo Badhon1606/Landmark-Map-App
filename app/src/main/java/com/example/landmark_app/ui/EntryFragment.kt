@@ -15,7 +15,9 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.setFragmentResult
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.example.landmark_app.databinding.FragmentEntryBinding
@@ -47,21 +49,11 @@ class EntryFragment : Fragment() {
         // Detect edit mode
         arguments?.let {
             if (it.containsKey("id")) {
-                // If the bundle contains lat/lon as Double, use getDouble. If String, use getString.
-                // We'll try both to be safe or stick to the one we know the sender uses.
-                // OverviewFragment now sends Double. RecordsFragment might send String if we kept it old way.
-                // Let's implement safe retrieval.
-
-                @Suppress("DEPRECATION")
-                val latStr = if (it.get("lat") is Double) it.getDouble("lat").toString() else it.getString("lat") ?: ""
-                @Suppress("DEPRECATION")
-                val lonStr = if (it.get("lon") is Double) it.getDouble("lon").toString() else it.getString("lon") ?: ""
-
                 editingLandmark = Landmark(
                     id = it.getInt("id"),
                     title = it.getString("title") ?: "",
-                    latitude = latStr,
-                    longitude = lonStr,
+                    latitude = it.getString("lat"),
+                    longitude = it.getString("lon"),
                     image = (it.getString("image") ?: "").trim()
                 )
             }
@@ -105,8 +97,8 @@ class EntryFragment : Fragment() {
         // Prefill edit mode
         editingLandmark?.let { lm ->
             binding.etTitle.setText(lm.title)
-            binding.etLat.setText(lm.latitude)
-            binding.etLon.setText(lm.longitude)
+            binding.etLat.setText(lm.latitude?.toString() ?: "")
+            binding.etLon.setText(lm.longitude?.toString() ?: "")
 
             if (lm.image.isNotEmpty()) {
                 Glide.with(requireContext())
@@ -211,33 +203,68 @@ class EntryFragment : Fragment() {
             try {
                 val api = RetrofitInstance.api
 
-                val response = if (editingLandmark == null) {
+                if (editingLandmark == null) {
                     if (imagePart == null) {
                          Toast.makeText(requireContext(), "Image required", Toast.LENGTH_SHORT).show()
                          return@launch
                     }
-                    api.createLandmark(titleBody, latBody, lonBody, imagePart)
-                } else {
-                    val methodBody = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
-                    val idBody = editingLandmark!!.id.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-                    api.updateLandmark(methodBody, idBody, titleBody, latBody, lonBody, imagePart)
-                }
-
-                if (response.isSuccessful) {
-                    Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
-                    if (parentFragmentManager.backStackEntryCount > 0) {
-                        parentFragmentManager.popBackStack()
+                    val response = api.createLandmark(titleBody, latBody, lonBody, imagePart)
+                    if (response.isSuccessful) {
+                        setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
+                        Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
+                        if (parentFragmentManager.backStackEntryCount > 0) {
+                            parentFragmentManager.popBackStack()
+                        } else {
+                            binding.etTitle.text?.clear()
+                            binding.etLat.text?.clear()
+                            binding.etLon.text?.clear()
+                            binding.ivPreview.setImageDrawable(null)
+                            pickedImageBitmap = null
+                            editingLandmark = null
+                            binding.btnSubmit.text = "Submit Landmark"
+                        }
                     } else {
-                         binding.etTitle.text?.clear()
-                         binding.etLat.text?.clear()
-                         binding.etLon.text?.clear()
-                         binding.ivPreview.setImageDrawable(null)
-                         pickedImageBitmap = null
-                         editingLandmark = null
-                         binding.btnSubmit.text = "Submit Landmark"
+                        Toast.makeText(requireContext(), "Upload failed: ${response.code()}", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    Toast.makeText(requireContext(), "Upload failed: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    val response = if (imagePart == null) {
+                        // update WITHOUT touching image
+                        api.updateLandmarkNoImage(
+                            id = editingLandmark!!.id,
+                            title = title,
+                            latitude = lat,
+                            longitude = lon
+                        )
+                    } else {
+                        // update WITH new image
+                        val methodBody = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
+                        val idBody = editingLandmark!!.id.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+                        api.updateLandmark(
+                            methodBody,
+                            idBody,
+                            titleBody,
+                            latBody,
+                            lonBody,
+                            imagePart
+                        )
+                    }
+                    if (response.isSuccessful) {
+                        setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
+                        Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
+                        if (parentFragmentManager.backStackEntryCount > 0) {
+                            parentFragmentManager.popBackStack()
+                        } else {
+                            binding.etTitle.text?.clear()
+                            binding.etLat.text?.clear()
+                            binding.etLon.text?.clear()
+                            binding.ivPreview.setImageDrawable(null)
+                            pickedImageBitmap = null
+                            editingLandmark = null
+                            binding.btnSubmit.text = "Submit Landmark"
+                        }
+                    } else {
+                        Toast.makeText(requireContext(), "Upload failed: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    }
                 }
 
             } catch (e: Exception) {

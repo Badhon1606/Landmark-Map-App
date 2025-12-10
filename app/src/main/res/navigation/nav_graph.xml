@@ -20,7 +20,7 @@
     <fragment
         android:id="@+id/entryFragment"
         android:name="com.example.landmark_app.ui.EntryFragment"
-        android:label="New Entry"
+        android:label="Add New Mark"
         tools:layout="@layout/fragment_entry" />
 
 </navigation>

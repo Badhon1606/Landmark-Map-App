@@ -31,6 +31,16 @@ interface LandmarkApiService {
         @Part image: okhttp3.MultipartBody.Part?
     ): Response<Landmark>
 
+    @FormUrlEncoded
+    @POST("api.php")
+    suspend fun updateLandmarkNoImage(
+        @Field("_method") method: String = "PUT",
+        @Field("id") id: Int,
+        @Field("title") title: String,
+        @Field("lat") latitude: String,
+        @Field("lon") longitude: String
+    ): Response<Unit>
+
     // DELETE (using POST + _method=DELETE)
     @FormUrlEncoded
     @POST("api.php")

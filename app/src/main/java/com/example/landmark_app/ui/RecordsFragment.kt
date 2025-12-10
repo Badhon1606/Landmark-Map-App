@@ -6,16 +6,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.landmark_app.R
 import com.example.landmark_app.adapter.LandmarkAdapter
-import com.example.landmark_app.network.RetrofitInstance
 import com.example.landmark_app.model.Landmark
+import com.example.landmark_app.network.RetrofitInstance
 import kotlinx.coroutines.launch
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.navigation.fragment.findNavController
 
 class RecordsFragment : Fragment() {
 
@@ -23,10 +24,19 @@ class RecordsFragment : Fragment() {
     private lateinit var adapter: LandmarkAdapter
     private var landmarkList: MutableList<Landmark> = mutableListOf()
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setFragmentResultListener("landmarkSaved") { _, bundle ->
+            if (bundle.getBoolean("refresh")) {
+                fetchLandmarks()
+            }
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         val view = inflater.inflate(R.layout.fragment_records, container, false)
         recyclerView = view.findViewById(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -41,10 +51,9 @@ class RecordsFragment : Fragment() {
     private fun fetchLandmarks() {
         lifecycleScope.launch {
             try {
-                // Now getLandmarks returns List<Landmark> directly, not Response
-                val response = RetrofitInstance.api.getLandmarks()
-                
-                landmarkList = response.toMutableList()
+                val landmarks = RetrofitInstance.api.getLandmarks()
+                landmarkList = landmarks.toMutableList()
+
                 adapter = LandmarkAdapter(landmarkList)
                 recyclerView.adapter = adapter
 
@@ -57,8 +66,9 @@ class RecordsFragment : Fragment() {
     }
 
     private fun attachSwipeGestures() {
-        val swipeHandler = object : ItemTouchHelper.SimpleCallback(0,
-            ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
+        val swipeHandler = object : ItemTouchHelper.SimpleCallback(
+            0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
+        ) {
 
             override fun onMove(
                 recyclerView: RecyclerView,
@@ -68,17 +78,16 @@ class RecordsFragment : Fragment() {
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
-                val landmark = landmarkList[position]
 
                 when (direction) {
 
-                    // 👉 Swipe Right for Edit
+                    // 👉 Swipe RIGHT → Edit
                     ItemTouchHelper.RIGHT -> {
                         adapter.notifyItemChanged(position)
+                        val landmark = adapter.getLandmarkAt(position)
                         val bundle = Bundle().apply {
                             putInt("id", landmark.id)
                             putString("title", landmark.title)
-                            // Latitude and longitude in Landmark are Strings
                             putString("lat", landmark.latitude)
                             putString("lon", landmark.longitude)
                             putString("image", landmark.image)
@@ -86,9 +95,9 @@ class RecordsFragment : Fragment() {
                         findNavController().navigate(R.id.entryFragment, bundle)
                     }
 
-                    // 👈 Swipe Left for Delete
+                    // 👈 Swipe LEFT → Delete
                     ItemTouchHelper.LEFT -> {
-                        deleteLandmark(position, landmark)
+                        deleteLandmark(position)
                     }
                 }
             }
@@ -97,13 +106,16 @@ class RecordsFragment : Fragment() {
         ItemTouchHelper(swipeHandler).attachToRecyclerView(recyclerView)
     }
 
-    private fun deleteLandmark(position: Int, landmark: Landmark) {
+    private fun deleteLandmark(position: Int) {
+        val landmark = adapter.getLandmarkAt(position)
         lifecycleScope.launch {
             try {
-                val response = RetrofitInstance.api.deleteLandmark(id = landmark.id)
+                val response = RetrofitInstance.api.deleteLandmark(
+                    id = landmark.id
+                )
 
                 if (response.isSuccessful) {
-                    landmarkList.removeAt(position)
+                    landmarkList.remove(landmark)
                     adapter.notifyItemRemoved(position)
                     Toast.makeText(requireContext(), "Deleted successfully", Toast.LENGTH_SHORT).show()
                 } else {
