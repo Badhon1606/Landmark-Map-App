@@ -3,6 +3,7 @@ package com.example.landmark_app.network
 import com.example.landmark_app.model.Landmark
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -18,7 +19,7 @@ interface LandmarkApi {
         @Part("lat") lat: RequestBody,
         @Part("lon") lon: RequestBody,
         @Part image: MultipartBody.Part
-    ): Response<Unit>
+    ): Response<ResponseBody>
 
     @Multipart
     @POST("api.php")
@@ -29,7 +30,7 @@ interface LandmarkApi {
         @Part("lat") lat: RequestBody,
         @Part("lon") lon: RequestBody,
         @Part image: MultipartBody.Part
-    ): Response<Unit>
+    ): Response<ResponseBody>
 
     @FormUrlEncoded
     @POST("api.php")
@@ -39,12 +40,11 @@ interface LandmarkApi {
         @Field("title") title: String,
         @Field("lat") lat: Double,
         @Field("lon") lon: Double
-    ): Response<Unit>
+    ): Response<ResponseBody>
 
-    @FormUrlEncoded
-    @POST("api.php")
+    @DELETE("api.php")
     suspend fun deleteLandmark(
-        @Field("_method") method: String = "DELETE",
-        @Field("id") id: Int
-    ): Response<Unit>
+        @Query("id") id: Int,
+        @Query("method") method: String = "DELETE"
+    ): Response<ResponseBody>
 }
