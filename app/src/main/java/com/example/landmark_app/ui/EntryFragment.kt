@@ -111,6 +111,11 @@ class EntryFragment : Fragment() {
             binding.btnSubmit.text = "Update Landmark"
         }
 
+        // Auto-fill location ONLY for new landmark
+        if (editingLandmark == null) {
+            detectCurrentLocation()
+        }
+
         binding.ivPreview.setOnClickListener { pickImageLauncher.launch("image/*") }
         binding.btnSelectImage.setOnClickListener { pickImageLauncher.launch("image/*") }
 
@@ -118,6 +123,18 @@ class EntryFragment : Fragment() {
         binding.btnUseCurrentLon.setOnClickListener { fetchCurrentLon() }
 
         binding.btnSubmit.setOnClickListener { saveLandmark() }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun detectCurrentLocation() {
+        checkLocation {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    binding.etLat.setText(loc.latitude.toString())
+                    binding.etLon.setText(loc.longitude.toString())
+                }
+            }
+        }
     }
 
     private fun loadBitmapFromUri(uri: android.net.Uri): Bitmap {
@@ -161,110 +178,75 @@ class EntryFragment : Fragment() {
 
     private fun saveLandmark() {
         val title = binding.etTitle.text.toString().trim()
-        val lat = binding.etLat.text.toString().trim()
-        val lon = binding.etLon.text.toString().trim()
+        val latStr = binding.etLat.text.toString().trim()
+        val lonStr = binding.etLon.text.toString().trim()
 
-        if (title.isEmpty()) {
-            binding.etTitle.error = "Required"
-            return
-        }
-        
-        if (lat.isEmpty()) {
-            binding.etLat.error = "Required"
-            return
-        }
-        
-        if (lon.isEmpty()) {
-            binding.etLon.error = "Required"
+        if (title.isEmpty() || latStr.isEmpty() || lonStr.isEmpty()) {
+            Toast.makeText(requireContext(), "All fields are required", Toast.LENGTH_SHORT).show()
             return
         }
 
-        if (editingLandmark == null && pickedImageBitmap == null) {
-            Toast.makeText(requireContext(), "Please choose an image", Toast.LENGTH_SHORT).show()
+        val lat = latStr.toDoubleOrNull()
+        val lon = lonStr.toDoubleOrNull()
+
+        if (lat == null || lon == null) {
+            Toast.makeText(requireContext(), "Invalid coordinates", Toast.LENGTH_SHORT).show()
             return
-        }
-
-        val titleBody = title.toRequestBody("text/plain".toMediaTypeOrNull())
-        val latBody = lat.toRequestBody("text/plain".toMediaTypeOrNull())
-        val lonBody = lon.toRequestBody("text/plain".toMediaTypeOrNull())
-
-        var imagePart: MultipartBody.Part? = null
-
-        if (pickedImageBitmap != null) {
-            val resized = resizeBitmap(pickedImageBitmap!!, 800, 600)
-            val stream = ByteArrayOutputStream()
-            resized.compress(Bitmap.CompressFormat.JPEG, 90, stream)
-            val bytes = stream.toByteArray()
-            val req = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
-            imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", req)
         }
 
         lifecycleScope.launch {
             try {
                 val api = RetrofitInstance.api
 
-                if (editingLandmark == null) {
-                    if (imagePart == null) {
-                         Toast.makeText(requireContext(), "Image required", Toast.LENGTH_SHORT).show()
-                         return@launch
+                val response = if (editingLandmark == null) {
+                    // CREATE
+                    if (pickedImageBitmap == null) {
+                        Toast.makeText(requireContext(), "Image required for new landmark", Toast.LENGTH_SHORT).show()
+                        return@launch
                     }
-                    val response = api.createLandmark(titleBody, latBody, lonBody, imagePart)
-                    if (response.isSuccessful) {
-                        setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
-                        Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
-                        if (parentFragmentManager.backStackEntryCount > 0) {
-                            parentFragmentManager.popBackStack()
-                        } else {
-                            binding.etTitle.text?.clear()
-                            binding.etLat.text?.clear()
-                            binding.etLon.text?.clear()
-                            binding.ivPreview.setImageDrawable(null)
-                            pickedImageBitmap = null
-                            editingLandmark = null
-                            binding.btnSubmit.text = "Submit Landmark"
-                        }
-                    } else {
-                        Toast.makeText(requireContext(), "Upload failed: ${response.code()}", Toast.LENGTH_SHORT).show()
-                    }
+                    val imagePart = partFromBitmap(pickedImageBitmap!!)
+                    api.createLandmark(
+                        title = title.toRequestBody("text/plain".toMediaTypeOrNull()),
+                        lat = latStr.toRequestBody("text/plain".toMediaTypeOrNull()),
+                        lon = lonStr.toRequestBody("text/plain".toMediaTypeOrNull()),
+                        image = imagePart
+                    )
                 } else {
-                    val response = if (imagePart == null) {
-                        // update WITHOUT touching image
-                        api.updateLandmarkNoImage(
-                            id = editingLandmark!!.id,
-                            title = title,
-                            latitude = lat,
-                            longitude = lon
-                        )
-                    } else {
-                        // update WITH new image
+                    // UPDATE
+                    val landmarkId = editingLandmark!!.id
+                    if (pickedImageBitmap != null) {
+                        val imagePart = partFromBitmap(pickedImageBitmap!!)
+                        val idBody = landmarkId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+                        val titleBody = title.toRequestBody("text/plain".toMediaTypeOrNull())
+                        val latBody = latStr.toRequestBody("text/plain".toMediaTypeOrNull())
+                        val lonBody = lonStr.toRequestBody("text/plain".toMediaTypeOrNull())
+
                         val methodBody = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
-                        val idBody = editingLandmark!!.id.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-                        api.updateLandmark(
-                            methodBody,
-                            idBody,
-                            titleBody,
-                            latBody,
-                            lonBody,
-                            imagePart
+
+                        api.updateLandmarkWithImage(
+                            method = methodBody,
+                            id = idBody,
+                            title = titleBody,
+                            lat = latBody,
+                            lon = lonBody,
+                            image = imagePart
+                        )
+                    } else {
+                        api.updateLandmarkNoImage(
+                            id = landmarkId,
+                            title = title,
+                            lat = lat,
+                            lon = lon
                         )
                     }
-                    if (response.isSuccessful) {
-                        setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
-                        Toast.makeText(requireContext(), "Saved!", Toast.LENGTH_SHORT).show()
-                        if (parentFragmentManager.backStackEntryCount > 0) {
-                            parentFragmentManager.popBackStack()
-                        } else {
-                            binding.etTitle.text?.clear()
-                            binding.etLat.text?.clear()
-                            binding.etLon.text?.clear()
-                            binding.ivPreview.setImageDrawable(null)
-                            pickedImageBitmap = null
-                            editingLandmark = null
-                            binding.btnSubmit.text = "Submit Landmark"
-                        }
-                    } else {
-                        Toast.makeText(requireContext(), "Upload failed: ${response.code()}", Toast.LENGTH_SHORT).show()
-                    }
+                }
+
+                if (response.isSuccessful) {
+                    setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
+                    Toast.makeText(requireContext(), "Success!", Toast.LENGTH_SHORT).show()
+                    parentFragmentManager.popBackStack()
+                } else {
+                    Toast.makeText(requireContext(), "Operation failed: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
 
             } catch (e: Exception) {
@@ -273,18 +255,18 @@ class EntryFragment : Fragment() {
         }
     }
 
-    private fun resizeBitmap(src: Bitmap, maxW: Int, maxH: Int): Bitmap {
-        val ratio = src.width.toFloat() / src.height
-        val w: Int
-        val h: Int
-        if (ratio > 1f) {
-            w = maxW
-            h = (w / ratio).toInt()
-        } else {
-            h = maxH
-            w = (h * ratio).toInt()
-        }
-        return Bitmap.createScaledBitmap(src, w, h, true)
+    private fun partFromBitmap(bitmap: Bitmap): MultipartBody.Part {
+        val resized = resizeBitmapExact(bitmap)  // always 800×600
+        val stream = ByteArrayOutputStream()
+        resized.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+        val bytes = stream.toByteArray()
+
+        val req = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+        return MultipartBody.Part.createFormData("image", "upload.jpg", req)
+    }
+
+    private fun resizeBitmapExact(bitmap: Bitmap): Bitmap {
+        return Bitmap.createScaledBitmap(bitmap, 800, 600, true)
     }
 
     override fun onDestroyView() {

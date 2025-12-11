@@ -52,7 +52,12 @@ class RecordsFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val landmarks = RetrofitInstance.api.getLandmarks()
-                landmarkList = landmarks.toMutableList()
+                landmarkList = landmarks.filter { lm ->
+                    !lm.title.isNullOrBlank()
+                            && !lm.latitude.isNullOrBlank()
+                            && !lm.longitude.isNullOrBlank()
+                            && !lm.image.isNullOrBlank()
+                }.toMutableList()
 
                 adapter = LandmarkAdapter(landmarkList)
                 recyclerView.adapter = adapter
@@ -110,9 +115,7 @@ class RecordsFragment : Fragment() {
         val landmark = adapter.getLandmarkAt(position)
         lifecycleScope.launch {
             try {
-                val response = RetrofitInstance.api.deleteLandmark(
-                    id = landmark.id
-                )
+                val response = RetrofitInstance.api.deleteLandmark(id = landmark.id)
 
                 if (response.isSuccessful) {
                     landmarkList.remove(landmark)

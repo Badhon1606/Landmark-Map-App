@@ -1,35 +1,35 @@
 package com.example.landmark_app.network
 
 import com.example.landmark_app.model.Landmark
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
-interface LandmarkApiService {
+interface LandmarkApi {
 
     @GET("api.php")
     suspend fun getLandmarks(): List<Landmark>
 
-    // CREATE
     @Multipart
     @POST("api.php")
     suspend fun createLandmark(
-        @Part("title") title: okhttp3.RequestBody,
-        @Part("lat") lat: okhttp3.RequestBody,
-        @Part("lon") lon: okhttp3.RequestBody,
-        @Part image: okhttp3.MultipartBody.Part?
-    ): Response<Landmark>
+        @Part("title") title: RequestBody,
+        @Part("lat") lat: RequestBody,
+        @Part("lon") lon: RequestBody,
+        @Part image: MultipartBody.Part
+    ): Response<Unit>
 
-    // UPDATE (PUT using POST)
     @Multipart
     @POST("api.php")
-    suspend fun updateLandmark(
-        @Part("_method") method: okhttp3.RequestBody,
-        @Part("id") id: okhttp3.RequestBody,
-        @Part("title") title: okhttp3.RequestBody,
-        @Part("lat") lat: okhttp3.RequestBody,
-        @Part("lon") lon: okhttp3.RequestBody,
-        @Part image: okhttp3.MultipartBody.Part?
-    ): Response<Landmark>
+    suspend fun updateLandmarkWithImage(
+        @Part("_method") method: RequestBody,
+        @Part("id") id: RequestBody,
+        @Part("title") title: RequestBody,
+        @Part("lat") lat: RequestBody,
+        @Part("lon") lon: RequestBody,
+        @Part image: MultipartBody.Part
+    ): Response<Unit>
 
     @FormUrlEncoded
     @POST("api.php")
@@ -37,11 +37,10 @@ interface LandmarkApiService {
         @Field("_method") method: String = "PUT",
         @Field("id") id: Int,
         @Field("title") title: String,
-        @Field("lat") latitude: String,
-        @Field("lon") longitude: String
+        @Field("lat") lat: Double,
+        @Field("lon") lon: Double
     ): Response<Unit>
 
-    // DELETE (using POST + _method=DELETE)
     @FormUrlEncoded
     @POST("api.php")
     suspend fun deleteLandmark(

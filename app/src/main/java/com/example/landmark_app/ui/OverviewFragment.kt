@@ -15,7 +15,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -30,8 +32,6 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-//import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
-//import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 class OverviewFragment : Fragment() {
 
@@ -40,17 +40,15 @@ class OverviewFragment : Fragment() {
     private lateinit var bottomSheetView: View
     private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
 
-    // private var locationOverlay: MyLocationNewOverlay? = null
     private var allLandmarks = mutableListOf<Landmark>()
     private var markers = mutableListOf<Marker>()
 
-    // Permission handler
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
             ) {
-                // setupLocationOverlay()
+                // Permission granted
             } else {
                 Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show()
             }
@@ -58,7 +56,7 @@ class OverviewFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setFragmentResultListener("landmarkSaved") { _, bundle ->
+        childFragmentManager.setFragmentResultListener("landmarkSaved", this) { _, bundle ->
             if (bundle.getBoolean("refresh")) {
                 loadLandmarks()
             }
@@ -73,7 +71,6 @@ class OverviewFragment : Fragment() {
         mapView = view.findViewById(R.id.osm_map)
         searchView = view.findViewById(R.id.searchView)
 
-        // Bottom Sheet Setup
         bottomSheetView = view.findViewById(R.id.bottomSheet)
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheetView)
         bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
@@ -81,7 +78,6 @@ class OverviewFragment : Fragment() {
         bottomSheetBehavior.skipCollapsed = true
 
         setupMap()
-        // checkLocationPermission()
         loadLandmarks()
         setupSearch()
 
@@ -100,35 +96,17 @@ class OverviewFragment : Fragment() {
             false
         }
     }
-/*
-    private fun checkLocationPermission() {
-        val fine = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_COARSE_LOCATION)
 
-        if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
-            setupLocationOverlay()
-        } else {
-            requestPermissionLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-            )
-        }
-    }
-
-    private fun setupLocationOverlay() {
-//        val provider = GpsMyLocationProvider(requireContext())
-//        locationOverlay = MyLocationNewOverlay(provider, mapView)
-//        locationOverlay?.enableMyLocation()
-//        mapView.overlays.add(locationOverlay)
-//        mapView.invalidate()
-    }
-*/
     private fun loadLandmarks() {
         lifecycleScope.launch {
             try {
                 val result = RetrofitInstance.api.getLandmarks()
-                allLandmarks = result.toMutableList()
-                Log.d("Overview", "Loaded ${allLandmarks.size} landmarks: $allLandmarks")
-
+                allLandmarks = result.filter { lm ->
+                    !lm.title.isNullOrBlank() &&
+                            !lm.latitude.isNullOrBlank() &&
+                            !lm.longitude.isNullOrBlank() &&
+                            !lm.image.isNullOrBlank()
+                }.toMutableList()
                 displayMarkers(allLandmarks)
             } catch (e: Exception) {
                 Log.e("Overview", "Error loading landmarks: ${e.message}")
@@ -137,23 +115,14 @@ class OverviewFragment : Fragment() {
     }
 
     private fun displayMarkers(list: List<Landmark>) {
-        Log.d("OverviewFragment", "displayMarkers called with ${list.size} landmarks")
-        // remove existing markers and MyLocation overlays (the yellow person)
-        mapView.overlays.removeAll { overlay ->
-            // Remove any Marker OR MyLocation overlays (class name safe-check)
-            overlay is Marker || overlay.javaClass.simpleName.contains("MyLocation")
-        }
+        mapView.overlays.removeAll { it is Marker }
         markers.clear()
 
         list.forEach { landmark ->
-            Log.d("OverviewFragment", "Processing landmark: ${landmark.title}, Lat: ${landmark.latitude}, Lon: ${landmark.longitude}")
-            // landmark.latitude and longitude are Double? now
             val lat = landmark.latitude?.toDoubleOrNull()
             val lon = landmark.longitude?.toDoubleOrNull()
 
             if (lat == null || lon == null) {
-                Log.w("OverviewFragment", "Skipping landmark with invalid coordinates: ${landmark.title}")
-                // skip if missing
                 return@forEach
             }
 
@@ -162,6 +131,7 @@ class OverviewFragment : Fragment() {
             marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             marker.relatedObject = landmark
             marker.title = landmark.title
+            marker.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_landmark_pin)
 
             marker.setOnMarkerClickListener { m, _ ->
                 showBottomSheet(m.relatedObject as Landmark)
@@ -172,12 +142,9 @@ class OverviewFragment : Fragment() {
             mapView.overlays.add(marker)
         }
 
-        // If you want the map to zoom to show all markers:
         if (markers.isNotEmpty()) {
-            // simple approach: center to first marker (or compute bounding box)
             val first = markers.first()
             mapView.controller.setCenter(first.position)
-            // keep existing zoom, or adjust as you wish
         }
 
         mapView.invalidate()
@@ -234,16 +201,13 @@ class OverviewFragment : Fragment() {
     private fun permanentlyDeleteLandmark(landmark: Landmark) {
         lifecycleScope.launch {
             try {
-                val response = RetrofitInstance.api.deleteLandmark(
-                    id = landmark.id
-                )
+                val response = RetrofitInstance.api.deleteLandmark(id = landmark.id)
 
                 if (response.isSuccessful) {
                     Toast.makeText(requireContext(), "Deleted!", Toast.LENGTH_SHORT).show()
-
+                    setFragmentResult("landmarkSaved", bundleOf("refresh" to true))
                     allLandmarks.remove(landmark)
                     displayMarkers(allLandmarks)
-
                     hideBottomSheet()
                 } else {
                     Toast.makeText(requireContext(), "Delete failed!", Toast.LENGTH_SHORT).show()
@@ -284,6 +248,5 @@ class OverviewFragment : Fragment() {
     override fun onPause() {
         super.onPause()
         mapView.onPause()
-        // locationOverlay?.disableMyLocation()
     }
 }
